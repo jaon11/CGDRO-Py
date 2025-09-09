@@ -559,8 +559,8 @@ class DRlm:
             if self.verbose:
                 print("======> Bias Correction for initial estimators....")
 
-            fits_info = [None] * self.L
-            Points_info = [None] * self.L
+            init_est = [None] * self.L
+            debias_est = [None] * self.L
 
             for l in range(self.L):
                 # center each source X (no scaling)
@@ -580,11 +580,11 @@ class DRlm:
                 
                 Est = bc.LF(X, y, self.loading_mat, beta_init=beta_init)
 
-                fits_info[l] = {'beta_init': beta_init, 'dev': dev}
-                Points_info[l] = {'est_debias_vec': np.asarray(Est['est_debias_vec']),
+                init_est[l] = {'beta_init': beta_init, 'dev': dev}
+                debias_est[l] = {'est_debias_vec': np.asarray(Est['est_debias_vec']),
                                 'se_vec': np.asarray(Est['se_vec'])}  
-            self.fits_info = fits_info
-            self.Points_info = Points_info
+            self.init_est = init_est
+            self.debias_est = debias_est
 
             ### Fitting Bias-corrected Estimator of Gamma with loading matrix ###
             if X0 is None:
@@ -597,7 +597,7 @@ class DRlm:
             # pred0.mat: n0 x L
             pred0_mat = np.empty((X0.shape[0], self.L))
             for l in range(self.L):
-                pred0_mat[:, l] = (X0 @ self.fits_info[l]['beta_init']).ravel()
+                pred0_mat[:, l] = (X0 @ self.init_est[l]['beta_init']).ravel()
             self.pred0_mat = pred0_mat
 
             if self.intercept:
@@ -610,8 +610,8 @@ class DRlm:
             Gamma_plugin = np.zeros((self.L, self.L))
             for l in range(self.L):
                 for k in range(l, self.L):
-                    b_l = fits_info[l]['beta_init']
-                    b_k = fits_info[k]['beta_init']
+                    b_l = init_est[l]['beta_init']
+                    b_k = init_est[k]['beta_init']
                     Gamma_plugin[l, k] = float(b_l.T @ Sigma0 @ b_k)
             # fill symmetric
             for l in range(1, self.L):
@@ -627,9 +627,9 @@ class DRlm:
 
             for l in range(self.L):
                 for k in range(self.L):
-                    loading = (Sigma0 @ fits_info[k]['beta_init']).reshape(1, -1)
+                    loading = (Sigma0 @ init_est[k]['beta_init']).reshape(1, -1)
                     Est_lk = bc.LF(self.X_list[l], self.y_list[l], loading,
-                                beta_init=fits_info[l]['beta_init'])
+                                beta_init=init_est[l]['beta_init'])
                     # Est_lk expects loading_mat as matrix; we pass single-column loading
                     # Est_lk returns est.debias.vec and est.plugin.vec arrays (length n_loading)
                     # Here original R code used Est.lk$est.debias.vec - Est.lk$est.plugin.vec
@@ -660,7 +660,7 @@ class DRlm:
             ## optimized weight vector
             self.weight_ = self.opt_weight(self.Gamma_debias,report_reward=False)['weight']
             ## DRO regression coefficients
-            self.loading_coef_ = np.sum([self.Points_info[l]['est_debias_vec'] * self.weight_[l] for l in range(self.L)], axis=0)  # Shape: (n_loading,)
+            self.loading_coef_ = np.sum([self.debias_est[l]['est_debias_vec'] * self.weight_[l] for l in range(self.L)], axis=0)  # Shape: (n_loading,)
 
 
             self.parameters = {
@@ -681,7 +681,7 @@ class DRlm:
                 Predicted values for the target domain features, shape (n0,).
             """
             plugin_weight = self.opt_weight(self.Gamma_plugin,report_reward=False)['weight']
-            plugin_coef = np.sum([self.fits_info[l]['beta_init'] * plugin_weight[l] for l in range(self.L)], axis=0)
+            plugin_coef = np.sum([self.init_est[l]['beta_init'] * plugin_weight[l] for l in range(self.L)], axis=0)
             pred = self.X0 @ plugin_coef
             return pred
 
@@ -739,9 +739,9 @@ class DRlm:
             ### Constructing CIs ###
             CIs = np.zeros((n_loading, 2))
             for k in range(n_loading):
-                loading_coef_0 = np.asarray([self.Points_info[l]['est_debias_vec'][k] for l in range(self.L)])
+                loading_coef_0 = np.asarray([self.debias_est[l]['est_debias_vec'][k] for l in range(self.L)])
                 gen_loading_coef_ = (gen_weight_mat @ loading_coef_0).reshape(-1)  # Shape: (M,)
-                ses = np.asarray([self.Points_info[l]['se_vec'][k] for l in range(self.L)])  # Standard errors for each source domain, shape (L,)
+                ses = np.asarray([self.debias_est[l]['se_vec'][k] for l in range(self.L)])  # Standard errors for each source domain, shape (L,)
                 gen_se = (gen_weight_mat @ ses).reshape(-1)  # Shape: (M,)
                     # Compute confidence intervals
                 z_alpha = norm.ppf(1 - alpha / 2)
@@ -851,8 +851,8 @@ class DRlm:
                             Sigma_l1 = X_l1.T @ X_l1 / X_l1.shape[0]
                             Sigma_k1 = X_k1.T @ X_k1 / X_k1.shape[0]
 
-                            dev_l1 = self.fits_info[l1]['dev']
-                            dev_k1 = self.fits_info[k1]['dev']
+                            dev_l1 = self.init_est[l1]['dev']
+                            dev_k1 = self.init_est[k1]['dev']
                         
 
                             # projection vectors
