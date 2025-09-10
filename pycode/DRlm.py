@@ -484,7 +484,8 @@ class DRlm:
         '''
         Closed-form DRO linear regression (low-dimension case so far)
         '''
-        def __init__(self,intercept=False,loading_intercept=False, delta=0, lam=None, verbose=False):
+        def __init__(self,f_learner = 'high_d', intercept=False,loading_intercept=False, delta=0, lam=None, verbose=False):
+            self.f_learner = f_learner # 'linear' for low_d, 'high_d' for high_d
             self.intercept = intercept
             self.loading_intercept = loading_intercept
             self.lam = lam
@@ -552,7 +553,7 @@ class DRlm:
                 self.X_list[l] = self.X_list[l] - np.mean(self.X_list[l], axis=0)
                 y = self.y_list[l]
                 X = self.X_list[l]
-                UM = UtilModels(mode='reg', f_learner='high_d', lambda_val=self.lam, split=False, verbose=self.verbose)
+                UM = UtilModels(mode='reg', f_learner=self.f_learner, lambda_val=self.lam, split=False, verbose=self.verbose)
                 UM.fit_f(X, y)
                 Umodel = UM.model_f
                 beta_init = np.concatenate(([Umodel.intercept_], Umodel.coef_)) if self.intercept else Umodel.coef_
