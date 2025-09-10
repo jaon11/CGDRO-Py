@@ -35,21 +35,6 @@ class DRlm:
             self.seed = seed
             self.log_message = []
 
-            ## Inference
-            #self.gradS = None           # Gradient of S
-            #self.H_inv = None           # Hessian inverse of S
-            # Covariance matrices
-            #self.mu_cov_list = []       # Covariance matrices of mu
-            #self.gradS_cov = None       # Covariance matrix of gradS
-            #self.mu_gradS_cov_list = [] # Covariance matrices of mu and gradS
-            # Resampling results
-            #self.theta_M = []           # Resampled theta
-            #self.gamma_M = []           # Resampled gamma
-            #self.CI_lb_M = []           # Resampled Lower bound of CI for theta
-            #self.CI_ub_M = []           # Resampled Upper bound of CI for theta
-            #self.CI_lb_U = None         # Union Lower bound of CI for theta
-            #self.CI_ub_U = None         # Union Upper bound of CI for theta
-            #self.CI_U = None            # Union CI for theta
 
     # ==================================================================================================== #
     # =================== Run Optimistic Gradient Mirror Prox to solve gamma and theta =================== #
