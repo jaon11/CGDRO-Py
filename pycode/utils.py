@@ -393,6 +393,7 @@ class UtilModels:
                 random_state=self.seed,
                 clip_min=1e-12
             )
+            #estimator = DensityRatioEstimator()
             param_grid = None
 
         else:
@@ -431,10 +432,11 @@ class UtilModels:
                 est_params = estimator.get_params()
                 estA = estimator.__class__(**est_params)
                 estB = estimator.__class__(**est_params)
+                #estA = estB = estimator
                 self.modelA_w = estA.fit(XA, X0)
                 self.modelB_w = estB.fit(XB, X0)
                 self.density_params = est_params
-
+                #self.density_params = None
         else:
             if self.w_learner in ('linear', 'xgb'):
                 X_concat = np.vstack((X, X0))
