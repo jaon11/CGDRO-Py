@@ -8,26 +8,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class DRlm:
-    class Classification: ## some global attributes in infer() would be changed to functional.
-        '''
+    class Classification: 
+        """
         CGDRO: Classification for linear model (Cross-Entropy Loss)
 
-        Attributes:
-            f_learner: the probability learner model.
-            w_learner: the density ratio learner model.
-            split: whether to split the source data into halves.
-            models: a list of UtilModels for each source domain.
-            mu_list: a list of length L. Each element is a vector of length num_class.
-            theta: the final theta parameters.
-            gamma: the final gamma parameters.
-            theta_M: Resampled theta in inference procedure.
-            gamma_M: Resampled gamma in inference procedure.
-            CI_lb_M: the lower bounds of resampled CIs.
-            CI_ub_M: the upper bounds of resampled CIs.
-            CI_lb_U: the lower bound of the union CI.
-            CI_ub_U: the upper bound of the union CI.
-            CI_U: the union CI.
-        '''
+        Args:
+            f_learner (str, optional): method used to fit outcome models on each source. Defaults to 'linear'.
+            w_learner (str, optional): method used to fit density models on each source. Defaults to 'linear'.
+            split (bool, optional): whether to split the source data into two halves for fitting outcome and density models. Defaults to True.
+            seed (int, optional): random seed. Defaults to 123.
+        """
+
         def __init__(self, f_learner='linear', w_learner='linear',split=True, seed=123):
             self.f_learner = f_learner
             self.w_learner = w_learner
@@ -40,18 +31,20 @@ class DRlm:
     # =================== Run Optimistic Gradient Mirror Prox to solve gamma and theta =================== #
     # ==================================================================================================== #
         def fit(self, X_list, y_list, X0=None, max_iter=1000, tol=1e-6, check_dual=False, verbose=False):
-            '''
+            """
             Estimate the parameters theta and gamma using Optimistic Gradient Mirror Prox.
             
-            Attributes:
-                X_list: a list of length L. Each element is a matrix of shape (n_l, d).
-                y_list: a list of length L. Each element is a vector of length n_l.
-                X0: a matrix of shape (n0, d). If None, it will be set to the vertical stack of X_list.
-                max_iter: maximum number of iterations.
-                tol: tolerance for convergence.
-                check_dual: whether to check the duality gap during optimization.
-                verbose: whether to print the log messages.
-            '''
+            Args:
+                X_list (list): list of feature matrices on each source domain
+                y_list (list): list of label arrays on each source domain
+                X0 (array, optional): feature matrix on the target domain. If None, use
+                                    the pooled source data as the target data. Defaults to None.    
+                max_iter (int, optional): maximum number of iterations. Defaults to 1000.
+                tol (float, optional): tolerance for convergence. Defaults to 1e-6.
+                check_dual (bool, optional): whether to check the duality gap. Defaults to False.
+                verbose (bool, optional): whether to print out the fitting information. Defaults to False.
+            """
+
             self.X_list = [np.asarray(Xi, dtype=float) for Xi in X_list]  # List of source domain features
             self.y_list = [np.asarray(yi, dtype=int).ravel() for yi in y_list]  # List of source domain labels
             if X0 is None:
@@ -142,9 +135,9 @@ class DRlm:
     # =================== Prediction  ======================================= #
     # ======================================================================= #
         def predict_proba(self):
-            '''
+            """
             Predict the probabilities of each class for the given input X.
-            '''
+            """ 
 
             theta_mat = self.theta.reshape(-1, self.d).T
             theta_mat = np.column_stack([np.zeros(self.d), theta_mat])  # Add zero column for the reference class
@@ -154,31 +147,37 @@ class DRlm:
             exp_terms = np.exp(stable_logits)
             proba = exp_terms / (exp_terms.sum(axis=1, keepdims=True))  # Shape (n_samples, num_class)
             proba = np.hstack([proba])  # Add the reference class
-            return proba
+            result = {
+                'pred_proba': proba
+            }
+            return result
 
         def predict(self):
-            '''
+            """
             Predict the class labels for the given input X.
-            '''
+            """
 
-            proba = self.predict_proba()
-            return np.argmax(proba, axis=1)
+            proba = self.predict_proba()['pred_proba']
+            pred = np.argmax(proba, axis=1)
+            result = {
+                'pred': pred
+            }
+            return result
 
     # ======================================================================= #
     # =================== Compute CIs ======================================= #
     # ======================================================================= #
-        def infer(self, index=0, M=500, alpha=0.05, diag=True, parallel=False, n_workers=4):
-            '''
-            Performs resampling for inference (coordinate = index).
+        def infer(self, M=500, alpha=0.05, diag=True, parallel=False, n_workers=4):
+            """
+            Performs resampling for inference.
 
-            Attributes:
-            index: the coordinate index for which to compute the confidence interval (dimension).
-            M: Resampling times.
-            parallel: parallel computing via CPU.
-            n_workers: the number of workers in parallel computing via CPU.
-            diag: whether to keep only the diagonal elements of the covariance matrices. 
-                    (Recommended for element-wise inference)
-            '''
+            Args:
+                M (int, optional): number of resampling iterations. Defaults to 500.
+                alpha (float, optional): significance level for confidence intervals. Defaults to 0.05.
+                diag (bool, optional): whether to use diagonal approximation for covariance matrices. Defaults to True.
+                parallel (bool, optional): whether to use parallel computing. Defaults to False.
+                n_workers (int, optional): number of workers for parallel computing. Defaults to 4.
+            """
             ## Inference
             self.gradS = None           # Gradient of S
             self.H_inv = None           # Hessian inverse of S
@@ -232,20 +231,121 @@ class DRlm:
             K = self.num_class - 1
             CI_Union = [(float(round(self.CI_lb_U[i], 4)), float(round(self.CI_ub_U[i], 4))) for i in range(self.d*K)]
             CI_Union = list(zip(*[iter(CI_Union)] * self.d))
-            self.CI_U = np.swapaxes(np.array(CI_Union), 0, 1) # (d,K,2)
-            self.CI_index = self.CI_U[index]  # CI for the coordinate index
+            self.CI = np.swapaxes(np.array(CI_Union), 0, 1) # (d,K,2)
                 
 
 
 
+    # ========================================================== #
+    # =================== Summary Functions =================== #
+    # ========================================================== #
+        def summary(self, dim_search=None, class_search=None):
+            """
+            Print the summary of the fitted model.
 
+            Args:
+                dim_search (array-like or None): 1-based indices of dimensions to print (subset of 1..d).
+                                                Defaults to all dimensions.
+                class_search (array-like or None): class labels to print (subset of 2..self.num_class).
+                                                Defaults to all (2..self.num_class).
+            """
 
+            if not hasattr(self, 'parameters'):
+                print("Model is not fitted yet. Please call the 'fit' method first.")
+                return
 
+            # ---- helpers ----
+            def _normalize_indices(user_idx, lo_1based, hi_1based, name):
+                if user_idx is None:
+                    return list(range(lo_1based - 1, hi_1based))  # all valid
+                try:
+                    idx_list = list(user_idx)
+                except TypeError:
+                    idx_list = [user_idx]
+                norm = []
+                for v in idx_list:
+                    vv = int(v)
+                    if not (lo_1based <= vv <= hi_1based):
+                        raise ValueError(f"{name} out of range: {vv} not in [{lo_1based}, {hi_1based}]")
+                    norm.append(vv - 1)
+                # dedup preserving order
+                seen, dedup = set(), []
+                for x in norm:
+                    if x not in seen:
+                        seen.add(x)
+                        dedup.append(x)
+                return dedup
+
+            def _print_chunks(label, indices, values, width=8, per_row=10, fmt="{:>8.4f}"):
+                """Pretty-print header+row in chunks."""
+                for start in range(0, len(indices), per_row):
+                    chunk_idx  = indices[start:start+per_row]
+                    chunk_vals = values[start:start+per_row]
+                    header = "dimension | " + " ".join(f"{(i+1):>{width}}" for i in chunk_idx)
+                    row    = f"{label:<10}| " + " ".join(fmt.format(v) for v in chunk_vals)
+                    print(header)
+                    print(row)
+
+            # ---- summary header ----
+            print("Model Summary:")
+            print("=================================")
+
+            # ---- weights ----
+            weight = self.parameters['weight_']  # shape (L,)
+            L = len(weight)
+            group_idx = list(range(L))
+            print("Fitted Weights:\n")
+            _print_chunks("weight_", group_idx, list(weight), width=8, per_row=10, fmt="{:>8.4f}")
+            print()
+
+            print("=================================")
+            print("Fitted Coefficients:\n")
+
+            # ---- coefficients ----
+            coef = self.parameters['coef_']  # shape (d, K)
+            d, K = coef.shape
+            dim_idx = _normalize_indices(dim_search, 1, d, "dim_search")
+
+            if class_search is None:
+                class_list = list(range(2, self.num_class + 1))
+            else:
+                try:
+                    class_list = list(class_search)
+                except TypeError:
+                    class_list = [class_search]
+
+            for c in class_list:
+                if not (2 <= c <= self.num_class):
+                    raise ValueError(f"class_search out of range: {c} not in [2, {self.num_class}]")
+                j = c - 2
+                coef_j = coef[dim_idx, j].ravel()
+
+                print(f"Class {c} coefficients:")
+                _print_chunks("coef_", dim_idx, list(coef_j), width=8, per_row=10, fmt="{:>8.4f}")
+                print()
+
+            # ---- confidence intervals ----
+            if hasattr(self, 'CI'):
+                print("=================================")
+                print("Confidence Intervals for each coefficient:")
+                CI = self.CI  # shape (d, K, 2)
+
+                for c in class_list:
+                    j = c - 2
+                    ci_j = CI[dim_idx, j, :]  # shape (len(dim_idx), 2)
+                    print(f"\nClass {c} Confidence Intervals:")
+
+                    # pre-format CIs as strings
+                    ci_strs = [f"({low:.3f},{high:.3f})" for (low, high) in ci_j]
+                    _print_chunks("CIs", dim_idx, ci_strs, width=14, per_row=5, fmt="{}")
+                print()
+            else:
+                print("Confidence Intervals not computed. Please run infer() method.")
 
     # ========================================================== #    
     # =================== Internal Functions =================== #
     # ========================================================== #
-        def fit_mu(self, verbose=False):
+        def fit_mu(self):
             """Compute the doubly-robust estimator of mu.
             Returns:
                 mu_list: a list of length L. Each element is a vector of length num_class.
@@ -481,9 +581,17 @@ class DRlm:
             return self.H_inv @ W_resample @ self.H_inv
 
     class Regression:
-        '''
+        """
         Closed-form DRO linear regression (low-dimension case so far)
-        '''
+
+        Args:
+            f_learner (str, optional): method used to fit outcome models on each source
+            intercept (bool, optional): whether to include intercept in outcome models. Defaults to False.
+            loading_intercept (bool, optional): whether to include intercept in loading matrix. Defaults to False.
+            delta (float, optional): ridge penalty level, non-positive. Defaults to 0.
+            lam (float, optional): Lasso penalty level for high-dimensional regression. Defaults to None.
+            verbose (bool, optional): whether to print out the fitting information. Defaults to False.
+        """
         def __init__(self,f_learner = 'high_d', intercept=False,loading_intercept=False, delta=0, lam=None, verbose=False):
             self.f_learner = f_learner # 'linear' for low_d, 'high_d' for high_d
             self.intercept = intercept
@@ -493,29 +601,19 @@ class DRlm:
             self.delta = delta
 
     # ==================================================================================================== #
-    # =================== Run Closed-form solution to solve gamma and theta =================== #
+    # =================== Run Closed-form solution to solve gamma and theta ============================== #
     # ==================================================================================================== #
         def fit(self, X_list, y_list, loading_mat, X0=None):
             """
             Fit (point estimate) the linear regression model using closed-form DRO.
 
-            Attributes:
-            X_list : list of np.ndarray
-                List of source domain features, each of shape (n_l, d).
-            y_list : list of np.ndarray
-                List of source domain labels, each of shape (n_l,).
-            X0 : np.ndarray, optional
-                Target domain features, shape (n0, d). If None, uses all source data
-            loading_mat : np.ndarray
-                Loading matrix for coefficients, shape (n_loading, d). 
-            delta : float, optional
-                Ridge penalty level, non-positive (default is 0).
-            Returns
-            -------
-            self : object
-                Fitted estimator.   
-
+            Args:
+                X_list (list of array-like): list of source domain features, each element is n_i x d.
+                y_list (list of array-like): list of source domain labels, each element is n_i x 1.
+                loading_mat (array-like): loading matrix, L x d or L x (d+1) if loading_intercept is True.
+                X0 (array-like, optional): target domain features, n0 x d. If None, use all sources' data. Defaults to None.
             """
+
             self.X_list = [np.asarray(Xi, dtype=float) for Xi in X_list]
             self.y_list = [np.asarray(yi, dtype=float).ravel() for yi in y_list]
             self.loading_mat = np.asarray(loading_mat, dtype=float)
@@ -539,8 +637,8 @@ class DRlm:
 
 
 
-
-            print('start fitting-----')
+            if self.verbose:
+                print('start fitting-----')
             ### Fitting Bias-corrected Estimator of Coef_ with loading matrix ###
             if self.verbose:
                 print("======> Bias Correction for initial estimators....")
@@ -616,13 +714,8 @@ class DRlm:
                     loading = (Sigma0 @ init_est[k]['beta_init']).reshape(1, -1)
                     Est_lk = bc.LF(self.X_list[l], self.y_list[l], loading,
                                 beta_init=init_est[l]['beta_init'])
-                    # Est_lk expects loading_mat as matrix; we pass single-column loading
-                    # Est_lk returns est.debias.vec and est.plugin.vec arrays (length n_loading)
-                    # Here original R code used Est.lk$est.debias.vec - Est.lk$est.plugin.vec
-                    # When loading is single column, these vectors have length 1.
                     est_debias_vec = np.asarray(Est_lk['est_debias_vec']).ravel()
                     est_plugin_vec = np.asarray(Est_lk['est_plugin_vec']).ravel() if 'est_plugin_vec' in Est_lk else np.asarray(Est_lk.get('est.plugin.vec', est_debias_vec*0)).ravel()
-                    # pick first element
                     correct_mat[l, k] = float(est_debias_vec[0] - est_plugin_vec[0])
                     Proj_array[l, k, :] = np.asarray(Est_lk['proj_mat']).ravel()
             self.Proj_array = Proj_array
@@ -639,18 +732,19 @@ class DRlm:
             self.Gamma_debias = Gamma_debias
             self.mean_Gamma_debias = self.Gamma_debias[np.tril_indices(self.L)]  ## self.mean_Gamma_debias the name need to change
             self.Gamma_plugin = Gamma_plugin
-            #self.var_loading_list = var_loading_list
-            #self.var_loading_mat = var_loading_mat
+
 
             ### Fitting DRO regression ###
             ## optimized weight vector
             self.weight_ = self.opt_weight(self.Gamma_debias,report_reward=False)['weight']
             ## DRO regression coefficients
-            self.loading_coef_ = np.sum([self.debias_est[l]['est_debias_vec'] * self.weight_[l] for l in range(self.L)], axis=0)  # Shape: (n_loading,)
+            self.est_bc = np.sum([self.debias_est[l]['est_debias_vec'] * self.weight_[l] for l in range(self.L)], axis=0)  # Shape: (n_loading,)
 
+            self.est_plug = np.sum([self.init_est[l]['beta_init'] * self.weight_[l] for l in range(self.L)], axis=0)
 
             self.parameters = {
-                    'loading_coef_': self.loading_coef_,
+                    'est_bc': self.est_bc,
+                    'est_plug': self.est_plug,
                     'weight_': self.weight_
                 }
 
@@ -661,42 +755,29 @@ class DRlm:
             """
             Predict using the fitted DRO regression model.
 
-            Returns
-            -------
-            np.ndarray
-                Predicted values for the target domain features, shape (n0,).
+            Returns:
+                pred (array-like): Predicted values for the target domain, shape (n0,).
             """
-            plugin_weight = self.opt_weight(self.Gamma_plugin,report_reward=False)['weight']
-            plugin_coef = np.sum([self.init_est[l]['beta_init'] * plugin_weight[l] for l in range(self.L)], axis=0)
-            pred = self.X0 @ plugin_coef
-            return pred
+
+            pred = self.X0 @ self.est_plug
+            result = {
+                'pred': pred
+            }
+            return result
 
     # ======================================================================= #
     # =================== Compute CIs ======================================= #
     # ======================================================================= #
         def infer(self, M=500, alpha=0.05, alpha_thres=0.01):        
             """
-            Placeholder for inference method.
             Perform resampling-based inference to compute confidence intervals for the loading coefficients.
-            Parameters
-            ----------
-            delta : float
-                Ridge penalty level, non-positive (default is 0).
-            M : int
-                Number of resampling iterations (default is 500).
-            alpha : float   
-                Significance level for confidence intervals (default is 0.05).
-            alpha_thres : float
-                Significance level for thresholding in resampling (default is 0.01).
-            Returns
-            -------
-            CI_U : np.ndarray
-                Confidence intervals for loading coefficients, shape (n_loading, 2).
-            Notes
-            -----
-            This method computes confidence intervals for the loading coefficients using a resampling approach. 
+            
+            Args:
+                M (int, optional): Number of resampling iterations. Defaults to 500.
+                alpha (float, optional): Significance level for confidence intervals. Defaults to 0.05.
+                alpha_thres (float, optional): Threshold for generating samples. Defaults to 0.01.  
             """
-            if not hasattr(self, 'loading_coef_'):
+            if not hasattr(self, 'est_bc'):
                 raise ValueError("Model is not fitted yet. Please call 'fit' first.")
             
             n_loading = self.loading_mat.shape[0]
@@ -735,12 +816,100 @@ class DRlm:
                 gen_CIs_ub = gen_loading_coef_ + z_alpha * gen_se # Shape: (M,)
                 CIs[k, 0] = np.min(gen_CIs_lb)
                 CIs[k, 1] = np.max(gen_CIs_ub)  
-            self.CI_U = CIs
+            self.CI = CIs
 
 
-        
+    # ======================================================================= #
+    # =================== Summary Functions ================================= #
+    # ======================================================================= #
+        def summary(self, dim_search=None):
+            """
+            Print a summary of the fitted model, including coefficients, weights, and CIs.
 
-    # ========================================================== #    
+            Args:
+                dim_search (list or int, optional): Specific dimensions to display. Defaults to None (all dimensions).
+            """
+            if not hasattr(self, 'parameters'):
+                raise ValueError("Model is not fitted yet. Please call 'fit' first.")
+
+            # ---- helpers ----
+            def _normalize_indices(user_idx, lo_1based, hi_1based, name):
+                if user_idx is None:
+                    return list(range(lo_1based - 1, hi_1based))  # all valid 0-based
+                try:
+                    idx_list = list(user_idx)
+                except TypeError:
+                    idx_list = [user_idx]
+                norm = []
+                for v in idx_list:
+                    vv = int(v)
+                    if not (lo_1based <= vv <= hi_1based):
+                        raise ValueError(f"{name} out of range: {vv} not in [{lo_1based}, {hi_1based}]")
+                    norm.append(vv - 1)  # to 0-based
+                # de-dup preserve order
+                seen, dedup = set(), []
+                for x in norm:
+                    if x not in seen:
+                        seen.add(x)
+                        dedup.append(x)
+                return dedup
+
+            def _print_chunks(label, indices, values, width=8, per_row=10, fmt="{:>8.4f}", header_label="dimension"):
+                """Pretty-print header+row in chunks."""
+                # values is assumed aligned to indices order
+                for start in range(0, len(indices), per_row):
+                    chunk_idx  = indices[start:start+per_row]
+                    chunk_vals = values[start:start+per_row]
+                    header = f"{header_label:<10}| " + " ".join(f"{(i+1):>{width}}" for i in chunk_idx)
+                    row    = f"{label:<10}| " + " ".join(fmt.format(v) for v in chunk_vals)
+                    print(header)
+                    print(row)
+
+            # ---- data prep ----
+            est_plug = self.parameters['est_plug']   # shape (n_loading,)
+            est_bc   = self.parameters['est_bc']     # shape (n_loading,)
+            d = len(est_bc)
+            dim_idx = _normalize_indices(dim_search, 1, d, "dim_search")
+
+            print("Model Summary:")
+            print("=================================")
+
+            # ---- Weights (as table: group | 1..L) ----
+            weight = self.parameters['weight_']  # shape (L,)
+            L = len(weight)
+            print("Fitted Weights:\n")
+            group_idx = list(range(L))
+            _print_chunks("weight_", group_idx, list(weight), width=8, per_row=10, fmt="{:>8.4f}", header_label="group")
+            print()
+
+            print("=================================")
+
+            # ---- Plug-in estimates (maximin effects) ----
+            print("Fitted Plug-in Estimations (Maximin Effects):\n")
+            plug_vals = [est_plug[i] for i in range(len(est_plug))]
+            _print_chunks("coef_", range(len(est_plug)), plug_vals, width=8, per_row=10, fmt="{:>8.4f}", header_label="dimension")
+            print()
+
+            print("=================================")
+            print("Fitted Debiased Estimations:\n")
+            bc_vals = [est_bc[i] for i in dim_idx]
+            _print_chunks("coef_", dim_idx, bc_vals, width=8, per_row=10, fmt="{:>8.4f}", header_label="dimension")
+            print()
+
+            # ---- Confidence Intervals ----
+            if hasattr(self, 'CI'):
+                CI = self.CI  # shape (n_loading, 2)
+                print("=================================")
+                print("Confidence Intervals for each coefficient:\n")
+
+                # Pre-format as tuple strings; 5 per row for readability
+                ci_strs = [f"({CI[i,0]:.4f},{CI[i,1]:.4f})" for i in dim_idx]
+                _print_chunks("CI", dim_idx, ci_strs, width=14, per_row=5, fmt="{}", header_label="dimension")
+                print()
+            else:
+                print("Confidence Intervals not computed. Please run infer() method.")
+
+    # ========================================================== #
     # =================== Internal Functions =================== #
     # ========================================================== #
 
@@ -748,20 +917,11 @@ class DRlm:
             """
             Compute Ridge-type weight vector using cvxpy.
             
-            Parameters
-            ----------
-            Gamma : ndarray (L, L)
-                Regression covariance matrix
-            delta : float
-                Ridge penalty level, non-positive
-            report_reward : bool
-                Whether to compute penalized reward
-            
-            Returns
-            -------
-            dict : 
-                'weight' : ndarray (L,)
-                'reward' : float (if report_reward=True)
+            Args:
+                Gamma (array-like): L x L matrix.
+                report_reward (bool, optional): Whether to report the reward value. Defaults to False.
+            Returns:
+                dict: Contains 'weight' (optimal weights) and optionally 'reward' (optimal reward value).
             """
             Gamma = np.array(Gamma, dtype=float)
             L = Gamma.shape[1]
@@ -804,13 +964,11 @@ class DRlm:
             Maps (l, k) with l >= k into vectorized index of upper-triangular part (column-wise),
             matching R: index.map(L, l, k) = (2L - k)(k - 1)/2 + l
 
-            Parameters:
-            - L: int, size of the matrix
-            - l: int, row index (0-based)
-            - k: int, column index (0-based)
-
+            Args:
+                l (int): row index (0-based)
+                k (int): column index (0-based), must satisfy l >= k
             Returns:
-            - int: vectorized index
+                int: vectorized index (0-based)
             """
             return int((2 * self.L - (k + 1)) * k // 2 + l)
 
@@ -873,26 +1031,13 @@ class DRlm:
             """
             Generate samples from a multivariate normal distribution with different truncation strategies.
 
-            Parameters
-            ----------
-            gen_mu : array-like
-                Mean vector of the distribution.
-            gen_Cov : array-like
-                Covariance matrix of the distribution.
-            gen_size : int, optional
-                Number of samples to generate. Default is 500.
-            threshold : int, optional
-                Type of thresholding:
-                0 -> coordinate-wise (normal) threshold,
-                1 -> chi-square threshold,
-                2 -> no threshold (standard MVN sampling).
-            alpha_thres : float, optional
-                Significance level for thresholding. Default is 0.01.
-
-            Returns
-            -------
-            gen_samples : np.ndarray
-                Generated samples of shape (gen_size, gen_dim).
+            Args:
+                gen_Cov (array-like): Covariance matrix for the multivariate normal distribution.
+                gen_size (int, optional): Number of samples to generate. Defaults to 500.   
+                threshold (int, optional): Truncation strategy (0: coordinate-wise, 1: chi-square, 2: none). Defaults to 0.
+                alpha_thres (float, optional): Significance level for truncation. Defaults to 0.01.
+            Returns:
+                array-like: Generated samples of shape (gen_size, gen_dim).
             """
             gen_mu = np.asarray(self.mean_Gamma_debias).reshape(-1)  # Ensure gen_mu is a 1D array
             gen_dim = len(gen_mu)

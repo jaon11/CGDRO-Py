@@ -1,8 +1,17 @@
 import numpy as np
 from utils import *
 import cvxpy as cp
+from cvxpy.error import DCPError, SolverError
 
 class DRoL:
+    """
+    Distributionally Robust Learning (DRoL) for multi-source data.
+        Args:
+            f_learner (str, optional): method used to fit outcome models on each source. Defaults to 'xgb'.
+            w_learner (str, optional): method used to fit density models on each source. Defaults to 'xgb'.
+            seed (int, optional): random seed. Defaults to 123.
+            verbose (bool, optional): whether to print out the fitting information. Defaults to False.
+    """
     def __init__(self, f_learner = 'xgb', w_learner = 'linear', seed = 123, verbose = False):
         self.seed = seed
         self.f_learner = f_learner
@@ -14,13 +23,19 @@ class DRoL:
         self.Gamma_corr = None
         self.pred_full_mat = None
         self.source_full_models = None
-    
-    def fit(self, X_list, y_list, X0=None):
+
+    def fit(self, X_list, y_list, X0=None, bias_correct=True, priors=None):
         """Compute the plug-in and bias-corrected estimators of the Gamma matrix.
 
         Args:
-            f_learner (str, optional): method used to fit outcome models on each source. Defaults to 'xgb'.
-            w_learner (str, optional): method used to fit density models on each source. Defaults to 'xgb'.
+            X_list (list): list of feature matrices on each source domain
+            y_list (list): list of label arrays on each source domain
+            X0 (array, optional): feature matrix on the target domain. If None, use
+                                    the pooled source data as the target data. Defaults to None.
+            bias_correct (bool, optional): whether to use the bias-corrected estimator of the Gamma matrix. Defaults to True.
+            priors (tuple, optional): prior information on the aggregation weights, given as (prior_weight, rho),
+                                    where prior_weight is the prior weight vector and rho is the radius of the
+                                    L2-norm ball around prior_weight. If None, no prior information is used. Defaults to None.
         """
         self.X_list = [np.asarray(Xi, dtype=float) for Xi in X_list]
         self.y_list = [np.asarray(yi, dtype=float).ravel() for yi in y_list]
@@ -36,8 +51,6 @@ class DRoL:
         N = self.X0.shape[0]
 
         # ------------ Plug-in Estimator of Gamma matrix ------------
-        # Use the entire source data to fit the source models
-        # and predict on the target data
         self.pred_full_mat = np.zeros((N, self.L))
         self.source_full_models = [UtilModels(mode='reg', f_learner=self.f_learner, w_learner=self.w_learner, split=False, seed=self.seed, verbose=self.verbose) for l in range(self.L)]
         for l in range(self.L):
@@ -51,10 +64,12 @@ class DRoL:
 
         models = [UtilModels(mode='reg', f_learner=self.f_learner, w_learner=self.w_learner, split=True, seed=self.seed, verbose=self.verbose) for l in range(self.L)]
         indA_list, indB_list = [], []
+        w_list = []
         for l in range(self.L):
             models[l].fit_f(self.X_list[l], self.y_list[l])
             indA, indB = models[l].indA, models[l].indB
             models[l].fit_w(self.X_list[l], self.X0)
+            w_list.append(models[l].pred_w(self.X_list[l], self.X0))
             indA_list.append(indA)
             indB_list.append(indB)
 
@@ -63,36 +78,18 @@ class DRoL:
         self.Gamma_corr = self.Gamma_plug.copy()
         
         for k in range(self.L):
-            #fk = models[k].pred_f(self.X_list[k], self.X0)[0]
-            #fkA, fkB = fk[indA_list[k]], fk[indB_list[k]]
-            #wk = models[k].pred_w(self.X_list[k], self.X0)
-            #wkA, wkB = wk[indA_list[k]], wk[indB_list[k]]
             fkA = models[k].modelA_f
             fkB = models[k].modelB_f
-            wkA = models[k].modelA_w
-            wkB = models[k].modelB_w
+            wkA = w_list[k][indB_list[k]]
+            wkB = w_list[k][indA_list[k]]
 
            
             
             for l in range(self.L):
                 flA = models[l].modelA_f
                 flB = models[l].modelB_f
-                wlA = models[l].modelA_w
-                wlB = models[l].modelB_w
-                #fl = models[l].pred_f(self.X_list[l], self.X0)[0]
-                #flA, flB = fl[indA_list[l]], fl[indB_list[l]]
-                #wl = models[l].pred_w(self.X_list[l], self.X0)
-                #wlA, wlB = wl[indA_list[l]], wl[indB_list[l]]
-                #fkl = models[k].pred_f(self.X_list[l], self.X0)[0]
-                #fklA, fklB = fkl[indA_list[l]], fkl[indB_list[l]]
-                #flk = models[l].pred_f(self.X_list[k], self.X0)[0]
-                #flkA, flkB = flk[indA_list[k]], flk[indB_list[k]]
-   
-
-                #num1A = np.mean(wlA * fklA * (flA - self.y_list[l][indA_list[l]]))
-                #num2A = np.mean(wkA * flkA * (fkA - self.y_list[k][indA_list[k]]))
-                #num1B = np.mean(wlB * fklB * (flB - self.y_list[l][indB_list[l]]))
-                #num2B = np.mean(wkB * flkB * (fkB - self.y_list[k][indB_list[k]]))
+                wlA = w_list[l][indB_list[l]]
+                wlB = w_list[l][indA_list[l]]
 
                 num1A = self._bias_correct(fkA, flA, wlA,
                                            self.X_list[l][indB_list[l]],
@@ -110,19 +107,6 @@ class DRoL:
                 self.Gamma_corr[k, l] -= (num1A + num2A + num1B + num2B) / 2
         
         self.Gamma_corr = (self.Gamma_corr.T + self.Gamma_corr) / 2
-        
-    def predict(self, bias_correct=True, priors=None):
-        """Estimate the optimal aggregation weights using the estimated Gamma matrix,
-        and yield the robust prediction on the target domain.
-
-        Args:
-            bias_correct (bool, optional): whether to use the bias-corrected estimator. Defaults to True.
-            priors (list, optional): priors upon the aggregation weights. Defaults to None.
-        
-        Returns:
-            pred : the robust prediction on the target domain
-            q_opt : the optimal aggregation weights
-        """
         Gamma = self.Gamma_corr if bias_correct else self.Gamma_plug
         q = cp.Variable(self.L, nonneg=True)
         if priors is None:
@@ -132,13 +116,26 @@ class DRoL:
             constraints = [cp.sum(q) == 1, cp.norm(q - prior_weight) <= rho]
         objective = cp.Minimize(cp.quad_form(q, Gamma))
         prob = cp.Problem(objective, constraints)
-        prob.solve()
-        q_opt = q.value
-        pred = self.pred_full_mat @ q_opt
-        self.weight_ = q_opt
+
+        try:
+            prob.solve()
+            q_opt = q.value
+            self.weight_ = q_opt
+        except (DCPError, SolverError) as e:
+            print("f_learner or w_learner is not well learned.")
+            self.weight_ = None
+        
+    def predict(self):
+        """Estimate the optimal aggregation weights using the estimated Gamma matrix,
+        and yield the robust prediction on the target domain.
+        
+        Returns:
+            pred : the robust prediction on the target domain
+        """
+
+        pred = self.pred_full_mat @ self.weight_
         self.pred = pred
         result = {
-            'weight_': self.weight_,
             'pred': self.pred
         }
         return result
@@ -154,7 +151,8 @@ class DRoL:
             Xl : feature matrix on the l-th source domain
             Yl : label array on the l-th source domain
         """
-        return np.mean(wl.predict(Xl) * fk.predict(Xl) * (fl.predict(Xl) - Yl))
+        
+        return np.mean(wl * fk.predict(Xl) * (fl.predict(Xl) - Yl))
 
     
 

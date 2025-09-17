@@ -5,10 +5,7 @@ from collections import Counter
 from sklearn.linear_model import LinearRegression, LogisticRegression, LassoCV, Lasso
 from sklearn.model_selection import GridSearchCV, KFold, StratifiedKFold
 import xgboost as xgb
-
-
-### an idea: give up all pred_f, pred_w, only use fit family to connect api of sklearn and use their predict
-
+from Kden import KernelRatioEstimatorKLIEP
 
 def compute_softmax(x):
     """Compute softmax probabilities for multi-class classification.
@@ -26,21 +23,34 @@ def compute_softmax(x):
     exp_x = np.exp(x_aug - x_max)
     return exp_x[:, 1:] / np.sum(exp_x, axis=1, keepdims=True)
 
-def fit_fw(models, X_list, y_list, X0):
-    """Fit the probability and density ratio models.
-    Attributes:
-        models: a list of trained models for each source domain.
-        X_list: a list of length L. Each element is a matrix of shape (n_l, d).
-        y_list: a list of length L. Each element is a vector of length n_l.
-        X0: a matrix of shape (n0, d). If None, it will be set to the vertical stack of X_list.
-        f_learner: the probability learner model. (no need?)
-        w_learner: the density ratio learner model. (no need?)
-        split: whether to split the source data into halves.
+# --- helpers: classifier proba -> density ratio (with prior correction) ---
+def _proba_to_ratio(p, ns, nt):
+    """
+    Convert p(y=1|x) from a classifier trained on [source vs target] mixture
+    into w(x) = p_t(x)/p_s(x), correcting for mixture priors.
 
+    odds = p/(1-p) = (pi_t/pi_s)*w   =>   w = (pi_s/pi_t)*odds
+    where pi_s = ns/(ns+nt), pi_t = nt/(ns+nt).
+    """
+    p = np.clip(p, 1e-12, 1.0 - 1e-12)
+    pi_s = ns / (ns + nt)
+    pi_t = nt / (ns + nt)
+    odds = p / (1.0 - p)
+    return (pi_s / pi_t) * odds
+
+def fit_fw(models, X_list, y_list, X0):
+    """
+    Fit the probability and density ratio models.
+    
+    Args:
+        models: An instance of UtilModels class.
+        X_list: List of feature matrices for each source domain.
+        y_list: List of label arrays for each source domain.
+        X0: Feature matrix for the target domain.
     Returns:
-        fX_list: a list of length L. Each element is a matrix of shape (n_l, num_class-1).
-        fX0_list: a list of length L. Each element is a matrix of shape (n0, num_class-1).
-        wX_list: a list of length L. Each element is a vector of length n_l.
+        fX_list: List of predicted probabilities for each source domain.
+        fX0_list: List of predicted probabilities for the target domain.
+        wX_list: List of density ratio estimates for each source domain.
     """
     # --------------- Compute probas ---------------- #
     # Fit the models
@@ -60,13 +70,12 @@ def fit_fw(models, X_list, y_list, X0):
         wX = models.pred_w(X_list[l], X0)
         wX_list.append(wX)
 
-## for reg, no density_ratio, later fill in it.
 
     return fX_list, fX0_list, wX_list
     
 
 class UtilModels:
-    def __init__(self, mode='cls', f_learner='linear', w_learner='linear', lambda_val=None, split=False, intercept=False, seed=123, verbose=False): ## put two learners here?
+    def __init__(self, mode='cls', f_learner='linear', w_learner='linear', lambda_val=None, split=False, intercept=False, seed=123, verbose=False): 
         """Initialize the model utility class with parameters.
         Args:
             seed : int, optional
@@ -75,11 +84,18 @@ class UtilModels:
             f_learner : str, default='linear'
                 ('linear' or 'xgb')
             w_learner : str, default='linear'
-                ('linear' or 'xgb')
+                ('linear' or 'xgb' or 'ulsif' or 'rulsif' or 'kliep')
             split : bool, default=False
                 Whether to split data for creating independence.
             verbose : bool, default=False
                 Verbosity of GridSearchCV.
+            lambda_val : float or str, default=None
+                Regularization parameter for high-dimensional linear regression.
+                If 'CV.min', use the lambda that gives minimum CV error.
+                If 'CV', use the largest lambda within 1 standard error of the minimum CV error.
+                If None, no regularization is applied.
+            intercept : bool, default=False (for regression only)
+                Whether to include an intercept term in the regression model.
         """
         self.seed = seed
         np.random.seed(seed)
@@ -269,6 +285,21 @@ class UtilModels:
 
 
     def pred_f(self, X, X0):
+        """
+        Generate predictions for the source and target domains.
+
+        Args:
+            X : array-like of shape (n_samples, n_features)
+                Feature matrix for the source domain.
+            X0 : array-like of shape (m_samples, n_features)
+                Feature matrix for the target domain.
+
+        Returns:
+            predX : array-like of shape (n_samples, n_classes)
+                Predicted probabilities for the source domain.
+            predX0 : array-like of shape (m_samples, n_classes)
+                Predicted probabilities for the target domain.
+        """
         if self.mode == 'cls':
             if self.split:
                 modelA = self.modelA_f
@@ -323,121 +354,153 @@ class UtilModels:
         return predX, predX0
     
     
+
+
+
     def fit_w(self, X, X0):
-        """Fit a density model on the source domain and evaluate it on source domains.
+        """Fit a density-ratio model (no return; models stored on `self`)."""
+        verbose = 0 if not getattr(self, "verbose", False) else 1
+        X = np.asarray(X); X0 = np.asarray(X0)
 
-        Args:
-            X : array-like of shape (n_samples, n_features)
-                Feature matrix for the source domain.
-            X0 : array-like of shape (m_samples, n_features)
-                Feature matrix for the target domain.
-
-        Returns:
-            wX : array-like of shape (n_samples,)
-                Density ratio estimates for source domain.   
-        """
-        verbose = 0 if not self.verbose else 1
-
-        # ================== Model Definition ================== #
+        # ----------------- Model Definition ----------------- #
         if self.w_learner == 'linear':
-            estimator = LogisticRegression(solver='lbfgs')
+            estimator = LogisticRegression(solver='lbfgs', max_iter=1000)
             param_grid = None
+
         elif self.w_learner == 'xgb':
             estimator = xgb.XGBClassifier(
-                objective='binary:logistic',  # Binary classification objective
-                eval_metric='logloss',        # Metric for binary classification
-                n_jobs=-1,                    # Use all CPU cores
+                objective='binary:logistic',
+                eval_metric='logloss',
+                n_jobs=-1,
                 seed=self.seed
             )
             param_grid = {
-                'learning_rate': [0.1], #[0.01, 0.05, 0.1],    # Step size shrinkage used in update to prevents overfitting
-                'max_depth': [3,6],#[3, 6, 9],          # Maximum depth of a tree
-                'subsample': [0.8], #, 1.0],         # Row fraction
-                'colsample_bytree': [0.8] # [0.8, 1.0],  # Feature fraction
+                'learning_rate': [0.01, 0.05, 0.1, 0.2],
+                'max_depth': [3, 6, 9],
+                'subsample': [0.8, 0.9],
+                'colsample_bytree': [0.8]
             }
-            
-        # ================== Model Training / Prediction ================== #
-        if self.split:
-            # If split is True, split the source data into halves A and B
-            n = X.shape[0]
-            XA_concat = np.vstack((X[self.indA], X0))
-            XB_concat = np.vstack((X[self.indB], X0))
-            yA_concat = np.concatenate((np.zeros(X[self.indA].shape[0]), np.ones(X0.shape[0])))
-            yB_concat = np.concatenate((np.zeros(X[self.indB].shape[0]), np.ones(X0.shape[0])))
-
-            if param_grid is None: # No hyperparameter tuning, for logistic regression
-                self.modelA_w = estimator.fit(XA_concat, yA_concat)
-                self.modelB_w = estimator.fit(XB_concat, yB_concat)
-            else:
-                # Set up 5-fold stratified cross-validation
-                stratified_kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
-                gridA = GridSearchCV(
-                    estimator=estimator,
-                    param_grid=param_grid,
-                    cv=stratified_kfold,
-                    scoring='neg_log_loss',          # Use log loss for probability calibration
-                    verbose=verbose,
-                    n_jobs=-1
-                )
-                gridB = GridSearchCV(
-                    estimator=estimator,
-                    param_grid=param_grid,
-                    cv=stratified_kfold,
-                    scoring='neg_log_loss',          # Use log loss for probability calibration
-                    verbose=verbose,
-                    n_jobs=-1
-                )
-                gridA.fit(XA_concat, yA_concat)
-                gridB.fit(XB_concat, yB_concat)
-                self.modelA_w = gridA.best_estimator_
-                self.modelB_w = gridB.best_estimator_
-                self.density_params = gridA.best_params_ # Keep only the parameters of the first model
 
 
-        
+        elif self.w_learner == 'kliep':
+            estimator = KernelRatioEstimatorKLIEP(
+                sigma=getattr(self, 'w_sigma', None),
+                n_centers=getattr(self, 'w_n_centers', 200),
+                center_target=True,
+                lr=getattr(self, 'w_lr', 0.1),
+                max_iter=getattr(self, 'w_max_iter', 500),
+                tol=getattr(self, 'w_tol', 1e-6),
+                random_state=self.seed,
+                clip_min=1e-12
+            )
+            param_grid = None
+
         else:
-            # No split: we just train on the entire source dataset
-            X_concat = np.vstack((X, X0))
-            y_concat = np.concatenate((np.zeros(X.shape[0]), np.ones(X0.shape[0])))
-            if param_grid is None: # No hyperparameter tuning, for logistic regression
-                self.model_w = estimator.fit(X_concat, y_concat)
-            else:
-                # Set up 5-fold stratified cross-validation
-                stratified_kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
-                grid = GridSearchCV(
-                    estimator=estimator,
-                    param_grid=param_grid,
-                    cv=stratified_kfold,
-                    scoring='neg_log_loss',          # Use log loss for probability calibration
-                    verbose=verbose,
-                    n_jobs=-1
-                )
-                grid.fit(X_concat, y_concat)
-                self.model_w = grid.best_estimator_
-                self.density_params = grid.best_params_
+            raise ValueError(f"Unknown w_learner: {self.w_learner}")
 
+        # ----------------- Train (with or without split) ----------------- #
+        if getattr(self, "split", False):
+            if not hasattr(self, "indA") or not hasattr(self, "indB"):
+                raise ValueError("Cross-fitting requires self.indA and self.indB.")
+            indA = np.asarray(self.indA); indB = np.asarray(self.indB)
+            XA, XB = X[indA], X[indB]
+
+            if self.w_learner in ('linear', 'xgb'):
+                XA_concat = np.vstack((XA, X0))
+                XB_concat = np.vstack((XB, X0))
+                yA_concat = np.concatenate((np.zeros(XA.shape[0]), np.ones(X0.shape[0])))
+                yB_concat = np.concatenate((np.zeros(XB.shape[0]), np.ones(X0.shape[0])))
+
+                if param_grid is None:
+                    self.modelA_w = estimator.fit(XA_concat, yA_concat)
+                    self.modelB_w = estimator.fit(XB_concat, yB_concat)
+                else:
+                    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+                    gridA = GridSearchCV(estimator=estimator, param_grid=param_grid, cv=cv,
+                                        scoring='neg_log_loss', verbose=verbose, n_jobs=-1)
+                    gridB = GridSearchCV(estimator=estimator, param_grid=param_grid, cv=cv,
+                                        scoring='neg_log_loss', verbose=verbose, n_jobs=-1)
+                    gridA.fit(XA_concat, yA_concat)
+                    gridB.fit(XB_concat, yB_concat)
+                    self.modelA_w = gridA.best_estimator_
+                    self.modelB_w = gridB.best_estimator_
+                    self.density_params = gridA.best_params_
+
+            else:
+                # kernel learners: fit on (XA, X0) and (XB, X0)
+                est_params = estimator.get_params()
+                estA = estimator.__class__(**est_params)
+                estB = estimator.__class__(**est_params)
+                self.modelA_w = estA.fit(XA, X0)
+                self.modelB_w = estB.fit(XB, X0)
+                self.density_params = est_params
+
+        else:
+            if self.w_learner in ('linear', 'xgb'):
+                X_concat = np.vstack((X, X0))
+                y_concat = np.concatenate((np.zeros(X.shape[0]), np.ones(X0.shape[0])))
+                if param_grid is None:
+                    self.model_w = estimator.fit(X_concat, y_concat)
+                else:
+                    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+                    grid = GridSearchCV(estimator=estimator, param_grid=param_grid, cv=cv,
+                                        scoring='neg_log_loss', verbose=verbose, n_jobs=-1)
+                    grid.fit(X_concat, y_concat)
+                    self.model_w = grid.best_estimator_
+                    self.density_params = grid.best_params_
+            else:
+                self.model_w = estimator.fit(X, X0)
+                self.density_params = estimator.get_params()
+
+        self.density_learner = self.w_learner  # record choice
 
 
     def pred_w(self, X, X0):
-        if self.split:
-            prob_ratioAB = self.modelA_w.predict_proba(X[self.indB])[:, 1] / self.modelA_w.predict_proba(X[self.indB])[:, 0]
-            prob_ratioBA = self.modelB_w.predict_proba(X[self.indA])[:, 1] / self.modelB_w.predict_proba(X[self.indA])[:, 0]
-            wB = prob_ratioAB * (X[self.indA].shape[0] / X0.shape[0])
-            wA = prob_ratioBA * (X[self.indB].shape[0] / X0.shape[0])
-            
-            wX = np.zeros(X.shape[0])
-            wX[self.indA] = wA
-            wX[self.indB] = wB
+        """
+        Generate density ratio estimates for the source domain.
+
+        Args:
+            X  : (n_samples, n_features) source
+            X0 : (m_samples, n_features) target
+        Returns:
+            wX : (n_samples,) estimated w(x) = p_t(x)/p_s(x)
+        """
+        X = np.asarray(X); X0 = np.asarray(X0)
+        clip_lo = getattr(self, "w_clip_lo", 1e-3)
+        clip_hi = getattr(self, "w_clip_hi", 1e3)
+
+        if getattr(self, "split", False):
+            if not hasattr(self, "indA") or not hasattr(self, "indB"):
+                raise ValueError("Cross-fitting requires self.indA and self.indB.")
+            indA = np.asarray(self.indA); indB = np.asarray(self.indB)
+            XA, XB = X[indA], X[indB]
+            nt = X0.shape[0]
+
+            if self.density_learner in ('linear', 'xgb'):
+                # cross-predict probabilities, convert with per-fold priors
+                proba_AB = self.modelA_w.predict_proba(XB)[:, 1]  # modelA on XB
+                proba_BA = self.modelB_w.predict_proba(XA)[:, 1]  # modelB on XA
+                wB = _proba_to_ratio(proba_AB, ns=XB.shape[0], nt=nt)
+                wA = _proba_to_ratio(proba_BA, ns=XA.shape[0], nt=nt)
+            else:
+                # kernel: predict direct ratios cross-wise
+                wA = self.modelB_w.predict(XA)
+                wB = self.modelA_w.predict(XB)
+
+            wX = np.empty(X.shape[0], dtype=float)
+            wX[indA] = wA
+            wX[indB] = wB
 
         else:
-            prob_ratio = self.model_w.predict_proba(X)[:, 1] / self.model_w.predict_proba(X)[:, 0]
-            wX = prob_ratio * (X.shape[0] / X0.shape[0])
-        
-        # Clip the density ratio wX to avoid numerical instability
-        wX = np.clip(wX, 1e-3, 1e3) 
-        
+            if self.density_learner in ('linear', 'xgb'):
+                proba = self.model_w.predict_proba(X)[:, 1]
+                wX = _proba_to_ratio(proba, ns=X.shape[0], nt=X0.shape[0])
+            else:
+                wX = self.model_w.predict(X)
+
+        # final clipping for numerical stability
+        wX = np.clip(wX, clip_lo, clip_hi)
         return wX
-        
 
 
 
@@ -544,11 +607,6 @@ class BiasCorrection:
 
 
     def get_mode(self, v):
-        """
-        Mimics R's get_mode():
-        - If all values occur exactly once -> return median
-        - Else return the most frequent value
-        """
         counts = Counter(v)
         if all(c == 1 for c in counts.values()):
             return float(np.median(v))
@@ -556,67 +614,12 @@ class BiasCorrection:
             return float(max(counts, key=counts.get))
         
     def cond_var_fun(self, pred, y=None, sparsity=None):
-            """
-            Linear model case: conditional variance estimate
-            """
             if y is None:
                 raise ValueError("y must be provided for linear model cond_var_fun.")
             n = len(y)
             denom = max(0.7 * n, n - sparsity if sparsity is not None else n)
             sigma_sq = np.sum((y - pred) ** 2) / denom
             return np.repeat(sigma_sq, n)
-
-
-    def train_fun(self, X, y, lambda_val=None, max_iter=10000):
-        """
-        Equivalent to the 'linear' case in relevant.funs R function.
-        Uses Lasso regression with CV or a fixed lambda.
-        
-        Parameters:
-        -----------
-        X : ndarray, shape (n_samples, n_features)
-            Predictor matrix
-        y : ndarray, shape (n_samples,)
-            Response vector
-        intercept : bool, default=True
-            Whether to fit an intercept
-        lambda_val : str or float, default=None
-            If None -> "CV.min" behavior
-            If "CV" -> choose 1-standard-error lambda
-            If float -> fixed alpha (lambda) in Lasso
-
-        Returns:
-        --------
-        dict
-            {"lasso_est": coefficients}
-        """
-        n_features = X.shape[1]
-
-        if lambda_val is None or lambda_val == "CV.min":
-            model = LassoCV(cv=10, fit_intercept=self.intercept, max_iter=max_iter).fit(X, y)
-            coefs = np.concatenate(([model.intercept_], model.coef_)) if self.intercept else model.coef_
-        
-        elif lambda_val == "CV":
-            # Note: scikit-learn's LassoCV does not have lambda.1se directly
-            # We'll approximate by picking alpha with minimum CV error + 1 std
-            model = LassoCV(cv=10, fit_intercept=self.intercept, max_iter=max_iter).fit(X, y)
-            mse_path_mean = model.mse_path_.mean(axis=1)
-            mse_path_std = model.mse_path_.std(axis=1)
-            min_idx = np.argmin(mse_path_mean)
-            # Find largest alpha whose MSE <= min_MSE + std_MSE
-            mse_1se_threshold = mse_path_mean[min_idx] + mse_path_std[min_idx]
-            idx_1se = np.where(mse_path_mean <= mse_1se_threshold)[0][-1]
-            alpha_1se = model.alphas_[idx_1se]
-            model = Lasso(alpha=alpha_1se, fit_intercept=self.intercept, max_iter=max_iter).fit(X, y)
-            coefs = np.concatenate(([model.intercept_], model.coef_)) if self.intercept else model.coef_
-
-        else:
-            # lambda_val is numeric
-            model = Lasso(alpha=lambda_val, fit_intercept=self.intercept, max_iter=max_iter).fit(X, y)
-            coefs = np.concatenate(([model.intercept_], model.coef_)) if self.intercept else model.coef_
-
-        return {"lasso_est": coefs}
-
 
 
 
@@ -690,28 +693,6 @@ class BiasCorrection:
 
 
     def direction_fixed_tuning(self,X, loading, weight, deriv, xi=None, resol=1.5, step=3, incr=-1):
-        """
-        Python translation of Direction_fixedtuning() from R (CVXR -> cvxpy).
-        
-        Parameters
-        ----------
-        X : ndarray (n_samples, n_features)
-            Design matrix
-        loading : ndarray (n_features,)
-            Loading vector
-        weight : ndarray (n_samples,)
-            Weight vector
-        deriv : ndarray (n_samples,)
-            Derivative vector
-        xi : float or None
-            Regularization parameter; if None, computed from sqrt(2.01*log(p)/n) * resol**(incr*step)
-        resol : float
-            Multiplicative adjustment factor
-        step : int
-            Step count used for xi adjustment
-        incr : int
-            Direction of search (-1 decrease xi, +1 increase xi)
-        """
         p = X.shape[1]
         n = X.shape[0]
         loading = np.asarray(loading).reshape(-1)
