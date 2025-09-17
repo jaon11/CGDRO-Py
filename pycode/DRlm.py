@@ -276,16 +276,17 @@ class DRlm:
                         dedup.append(x)
                 return dedup
 
-            def _print_chunks(label, indices, values, width=8, per_row=10, fmt="{:>8.4f}"):
+
+            def _print_chunks(label, indices, values, width=8, per_row=10, fmt="{:>8.4f}", header_label="index"):
                 """Pretty-print header+row in chunks."""
+                # values is assumed aligned to indices order
                 for start in range(0, len(indices), per_row):
                     chunk_idx  = indices[start:start+per_row]
                     chunk_vals = values[start:start+per_row]
-                    header = "dimension | " + " ".join(f"{(i+1):>{width}}" for i in chunk_idx)
+                    header = f"{header_label:<10}| " + " ".join(f"{(i+1):>{width}}" for i in chunk_idx)
                     row    = f"{label:<10}| " + " ".join(fmt.format(v) for v in chunk_vals)
                     print(header)
                     print(row)
-
             # ---- summary header ----
             print("Model Summary:")
             print("=================================")
@@ -295,7 +296,7 @@ class DRlm:
             L = len(weight)
             group_idx = list(range(L))
             print("Fitted Weights:\n")
-            _print_chunks("weight_", group_idx, list(weight), width=8, per_row=10, fmt="{:>8.4f}")
+            _print_chunks("weight_", group_idx, list(weight), width=8, per_row=10, fmt="{:>8.4f}", header_label="group")
             print()
 
             print("=================================")
@@ -854,7 +855,7 @@ class DRlm:
                         dedup.append(x)
                 return dedup
 
-            def _print_chunks(label, indices, values, width=8, per_row=10, fmt="{:>8.4f}", header_label="dimension"):
+            def _print_chunks(label, indices, values, width=8, per_row=10, fmt="{:>8.4f}", header_label="index"):
                 """Pretty-print header+row in chunks."""
                 # values is assumed aligned to indices order
                 for start in range(0, len(indices), per_row):
@@ -887,13 +888,13 @@ class DRlm:
             # ---- Plug-in estimates (maximin effects) ----
             print("Fitted Plug-in Estimations (Maximin Effects):\n")
             plug_vals = [est_plug[i] for i in range(len(est_plug))]
-            _print_chunks("coef_", range(len(est_plug)), plug_vals, width=8, per_row=10, fmt="{:>8.4f}", header_label="dimension")
+            _print_chunks("coef_", range(len(est_plug)), plug_vals, width=8, per_row=10, fmt="{:>8.4f}", header_label="index")
             print()
 
             print("=================================")
             print("Fitted Debiased Estimations:\n")
             bc_vals = [est_bc[i] for i in dim_idx]
-            _print_chunks("coef_", dim_idx, bc_vals, width=8, per_row=10, fmt="{:>8.4f}", header_label="dimension")
+            _print_chunks("coef_", dim_idx, bc_vals, width=8, per_row=10, fmt="{:>8.4f}", header_label="index")
             print()
 
             # ---- Confidence Intervals ----
@@ -904,7 +905,7 @@ class DRlm:
 
                 # Pre-format as tuple strings; 5 per row for readability
                 ci_strs = [f"({CI[i,0]:.4f},{CI[i,1]:.4f})" for i in dim_idx]
-                _print_chunks("CI", dim_idx, ci_strs, width=14, per_row=5, fmt="{}", header_label="dimension")
+                _print_chunks("CI", dim_idx, ci_strs, width=14, per_row=5, fmt="{}", header_label="index")
                 print()
             else:
                 print("Confidence Intervals not computed. Please run infer() method.")
