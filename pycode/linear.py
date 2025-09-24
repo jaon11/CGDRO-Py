@@ -147,17 +147,14 @@ class Classification:
         exp_terms = np.exp(stable_logits)
         proba = exp_terms / (exp_terms.sum(axis=1, keepdims=True))  # Shape (n_samples, num_class)
         proba = np.hstack([proba])  # Add the reference class
-        result = {
-            'pred_proba': proba
-        }
-        return result
+        return proba
 
     def predict(self):
         """
         Predict the class labels for the given input X.
         """
 
-        proba = self.predict_proba()['pred_proba']
+        proba = self.predict_proba()
         pred = np.argmax(proba, axis=1)
         return pred
 
