@@ -51,7 +51,7 @@ class DataContainerSimu_linear_reg_lowd:
                                         cov=self.cov_source,
                                         size=n)
             if l==1:
-                Y = X @ self.beta_list[l] + np.random.normal(size=n)
+                Y = X @ self.beta_list[l] + np.random.normal(size=n) * 2
             else:
                 Y = X @ self.beta_list[l] + np.random.normal(scale=0.5, size=n)
             self.X_sources_list.append(X)
@@ -191,7 +191,7 @@ class DataContainerSimu_Nonlinear_reg:
         for l in range(self.L):
             X = np.random.multivariate_normal(mu, Sigma, self.n)
             if l == 1:
-                Y = self.f_funcs[l](X) + np.random.randn(self.n) * 2
+                Y = self.f_funcs[l](X) + np.random.randn(self.n) * 3
             else:
                 Y = self.f_funcs[l](X) + np.random.randn(self.n) * 0.5
             self.X_sources_list.append(X)
