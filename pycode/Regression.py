@@ -7,7 +7,7 @@ from scipy.linalg import svd
 
 
 class linear:
-    class lowd:
+    class ld:
         """
         Closed-form DRO linear regression (low-dimensional case)
 
@@ -243,7 +243,7 @@ class linear:
             # ---- Weights (as table: group | 1..L) ----
             weight = self.parameters['weight_']  # shape (L,)
             L = len(weight)
-            print("Fitted Weights:\n")
+            print("CGDRO Aggregated Weights:\n")
             group_idx = list(range(L))
             _print_chunks("weight_", group_idx, list(weight), width=8, per_row=10, fmt="{:>8.4f}", header_label="group")
             print()
@@ -251,7 +251,7 @@ class linear:
             print("=================================")
 
             # ---- Plug-in estimates ----
-            print("Fitted Coefficients:\n")
+            print("Coefficient Estimators:\n")
             plug_vals = [coef[i] for i in dim_idx]
             _print_chunks("coef_", dim_idx, plug_vals, width=8, per_row=10, fmt="{:>8.4f}", header_label="index")
             print()
@@ -260,7 +260,7 @@ class linear:
             if hasattr(self, 'CI'):
                 CI = self.CI  # shape (n_loading, 2)
                 print("=================================")
-                print("Confidence Intervals for each coefficient:\n")
+                print("Confidence Intervals:\n")
 
                 # Pre-format as tuple strings; 5 per row for readability
                 ci_strs = [f"({CI[i,0]:.4f},{CI[i,1]:.4f})" for i in dim_idx]
@@ -439,7 +439,7 @@ class linear:
 
 
 
-    class highd:
+    class hd:
         """
         Closed-form DRO linear regression (high-dimensional case)
 
@@ -725,7 +725,7 @@ class linear:
             # ---- Weights (as table: group | 1..L) ----
             weight = self.parameters['weight_']  # shape (L,)
             L = len(weight)
-            print("Fitted Weights:\n")
+            print("CGDRO Aggregated Weights:\n")
             group_idx = list(range(L))
             _print_chunks("weight_", group_idx, list(weight), width=8, per_row=10, fmt="{:>8.4f}", header_label="group")
             print()
@@ -733,13 +733,13 @@ class linear:
             print("=================================")
 
             # ---- Plug-in estimates ----
-            print("Fitted Plug-in Estimations:\n")
+            print("Plug-in Estimators:\n")
             plug_vals = est_plug
             _print_chunks("coef_", dim_idx, plug_vals, width=8, per_row=10, fmt="{:>8.4f}", header_label="index")
             print()
 
             print("=================================")
-            print("Fitted Debiased Estimations:\n")
+            print("Debiased Estimators:\n")
             bc_vals = est_bc
             _print_chunks("coef_", dim_idx, bc_vals, width=8, per_row=10, fmt="{:>8.4f}", header_label="index")
             print()
@@ -748,7 +748,7 @@ class linear:
             if hasattr(self, 'CI'):
                 CI = self.CI  # shape (n_loading, 2)
                 print("=================================")
-                print("Confidence Intervals for each coefficient:\n")
+                print("Confidence Intervals:\n")
 
                 # Pre-format as tuple strings; 5 per row for readability
                 ci_strs = [f"({CI[i,0]:.4f},{CI[i,1]:.4f})" for i in range(len(dim_idx))]
@@ -938,7 +938,7 @@ class linear:
 
 
 
-class nonlinear:
+class ml:
     """
     Distributionally Robust Learning (DRoL) for multi-source data.
         Args:

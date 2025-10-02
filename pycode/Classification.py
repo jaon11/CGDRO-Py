@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 
-class linear: 
+class Classification: 
     """
     CGDRO: Classification for linear model (Cross-Entropy Loss)
 
@@ -289,12 +289,12 @@ class linear:
         weight = self.parameters['weight_']  # shape (L,)
         L = len(weight)
         group_idx = list(range(L))
-        print("Fitted Weights:\n")
+        print("CGDRO Aggregated Weights:\n")
         _print_chunks("weight_", group_idx, list(weight), width=8, per_row=10, fmt="{:>8.4f}", header_label="group")
         print()
 
         print("=================================")
-        print("Fitted Coefficients:\n")
+        print("Coefficient Estimators:\n")
 
         # ---- coefficients ----
         coef = self.parameters['coef_']  # shape (d, K)
@@ -322,7 +322,7 @@ class linear:
         # ---- confidence intervals ----
         if hasattr(self, 'CI'):
             print("=================================")
-            print("Confidence Intervals for each coefficient:")
+            print("Confidence Intervals:")
             CI = self.CI  # shape (d, K, 2)
 
             for c in class_list:
