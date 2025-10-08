@@ -13,10 +13,7 @@ class linear:
 
         Args:
             f_learner (str, optional): method used to fit outcome models on each source
-            intercept (bool, optional): whether to include intercept in outcome models. Defaults to False.
-            loading_intercept (bool, optional): whether to include intercept in loading matrix. Defaults to False.
             delta (float, optional): ridge penalty level, non-positive. Defaults to 0.
-            lam (float, optional): Lasso penalty level for high-dimensional regression. Defaults to None.
             verbose (bool, optional): whether to print out the fitting information. Defaults to False.
         """
         def __init__(self, intercept=False,delta=0, verbose=False):
@@ -140,9 +137,9 @@ class linear:
             Perform resampling-based inference to compute confidence intervals for the loading coefficients.
             
             Args:
-                M (int, optional): Number of resampling iterations. Defaults to 500.
-                alpha (float, optional): Significance level for confidence intervals. Defaults to 0.05.
-                alpha_thres (float, optional): Threshold for generating samples. Defaults to 0.01.  
+                M (int, optional): number of resampling iterations. Defaults to 200.
+                alpha (float, optional): significance level for confidence intervals. Defaults to 0.05.
+                alpha_thres (float, optional): threshold for generating samples. Defaults to 0.01.
             """
             if not hasattr(self, 'coef_'):
                 raise ValueError("Model is not fitted yet. Please call 'fit' first.")
