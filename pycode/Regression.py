@@ -12,7 +12,7 @@ class linear:
         Closed-form DRO linear regression (low-dimensional case)
 
         Args:
-            f_learner (str, optional): method used to fit outcome models on each source
+            intercept (bool, optional): whether to include intercept in outcome models. Defaults to False.
             delta (float, optional): ridge penalty level, non-positive. Defaults to 0.
             verbose (bool, optional): whether to print out the fitting information. Defaults to False.
         """
@@ -441,7 +441,6 @@ class linear:
         Closed-form DRO linear regression (high-dimensional case)
 
         Args:
-            f_learner (str, optional): method used to fit outcome models on each source
             intercept (bool, optional): whether to include intercept in outcome models. Defaults to False.
             loading_intercept (bool, optional): whether to include intercept in loading matrix. Defaults to False.
             delta (float, optional): ridge penalty level, non-positive. Defaults to 0.

@@ -16,7 +16,7 @@ class Classification:
         f_learner (str, optional): method used to fit outcome models on each source. Defaults to 'linear'.
         w_learner (str, optional): method used to fit density models on each source. Defaults to 'linear'.
         split (bool, optional): whether to split the source data into two halves for fitting outcome and density models. Defaults to True.
-        seed (int, optional): random seed. Defaults to 123.
+        seed (int, optional): random seed for data-splitting. Defaults to 123.
     """
 
     def __init__(self, f_learner='linear', w_learner='linear',split=True, seed=123):
@@ -240,8 +240,8 @@ class Classification:
         Args:
             index (array-like or None): 1-based indices of dimensions to print (subset of 1..d).
                                             Defaults to all dimensions.
-            class_index (array-like or None): class labels to print (subset of 2..self.num_class).
-                                            Defaults to all (2..self.num_class).
+            class_index (array-like or None): class labels to print (subset of 1..self.num_class-1).
+                                            Defaults to all (1..self.num_class-1).
         """
 
         if not hasattr(self, 'parameters'):
