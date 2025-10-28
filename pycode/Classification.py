@@ -61,7 +61,14 @@ class Classification:
         self.num_class = len(np.unique(y_list[0]))  # Number of classes
 
         # Initialize the models with (tuned) hyperparameters
-        self.models = UtilModels("cls", self.f_learner, self.w_learner, self.split, self.seed, verbose)
+        self.models = UtilModels(
+                mode="cls",
+                f_learner=self.f_learner,
+                w_learner=self.w_learner,
+                split=self.split,
+                seed=self.seed,
+                verbose=verbose)
+        #self.models = UtilModels("cls", self.f_learner, self.w_learner, self.split, self.seed, verbose)
 
         self.fit_mu() ## get the value of mu_list with function fit()
         self.theta = np.zeros(self.d * (self.num_class - 1)) 
@@ -134,14 +141,20 @@ class Classification:
 # ======================================================================= #
 # =================== Prediction  ======================================= #
 # ======================================================================= #
-    def predict_proba(self):
+    def predict_proba(self, X=None):
         """
         Predict the probabilities of each class for the given input X.
         """ 
+        if X is None:
+            X = self.X0 
+        else:
+            if X.shape[1] != self.d:
+                raise ValueError(f"Dimension mismatch between input features and fitted coefficients.")
+        X = np.asarray(X, dtype=float)
 
         theta_mat = self.theta.reshape(-1, self.d).T
         theta_mat = np.column_stack([np.zeros(self.d), theta_mat])  # Add zero column for the reference class
-        logits = self.X0 @ theta_mat  # Shape (n_samples, num_class)
+        logits = X @ theta_mat  # Shape (n_samples, num_class)
         logits_max = np.max(logits, axis=1, keepdims=True)
         stable_logits = logits - logits_max  # subtract max for numerical stability
         exp_terms = np.exp(stable_logits)
@@ -149,12 +162,12 @@ class Classification:
         proba = np.hstack([proba])  # Add the reference class
         return proba
 
-    def predict(self):
+    def predict(self, X=None):
         """
         Predict the class labels for the given input X.
         """
 
-        proba = self.predict_proba()
+        proba = self.predict_proba(X)
         pred = np.argmax(proba, axis=1)
         return pred
 

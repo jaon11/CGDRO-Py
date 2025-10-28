@@ -16,7 +16,7 @@ class linear:
             delta (float, optional): ridge penalty level, non-positive. Defaults to 0.
             verbose (bool, optional): whether to print out the fitting information. Defaults to False.
         """
-        def __init__(self, intercept=False,delta=0, verbose=False):
+        def __init__(self, intercept=False, delta=0, verbose=False):
             self.intercept = intercept
             self.verbose = verbose
             self.delta = delta
@@ -91,6 +91,8 @@ class linear:
             for l in range(self.L):
                 X_l = self.X_list[l]
                 y_l = self.y_list[l]
+                if self.intercept:
+                    X_l = np.hstack([np.ones((X_l.shape[0], 1), dtype=float), X_l])
                 dev_vec[l] = np.sum((y_l - X_l @ self.beta_list[l]) ** 2) / (X_l.shape[0] - self.d)
                 varl = dev_vec[l] * np.linalg.inv(X_l.T @ X_l)  # Shape: (n_loading, n_loading)
                 var_mat[l, :] = np.diag(varl)  # Store diagonal elements
@@ -117,15 +119,30 @@ class linear:
     # ======================================================================= #
     # =================== Prediction  ======================================= #
     # ======================================================================= #
-        def predict(self):
+        def predict(self, X=None):
             """
             Predict using the fitted DRO regression model.
 
             Returns:
                 pred (array-like): Predicted values for the target domain, shape (n0,).
             """
+            if X is None:
+                X = self.X0
+                if self.intercept:
+                    X_with_int = np.column_stack((np.ones(X.shape[0]), X))
+                    pred = X_with_int @ self.coef_
+                else:
+                    pred = X @ self.coef_
 
-            pred = self.X0 @ self.coef_
+            else:
+                if X.shape[1] != len(self.coef_):
+                    raise ValueError("Dimension mismatch between input features and fitted coefficients.")
+            
+                X = np.asarray(X, dtype=float)
+                pred = X @ self.coef_
+
+
+            
 
             return pred
 
@@ -326,6 +343,12 @@ class linear:
             gen_dim = L * (L + 1) // 2
             Var_Gamma = np.full((gen_dim, gen_dim), np.nan)
 
+            def inv_V(Sigma, ridg=1e-8):
+                """Compute inverse of Sigma with ridge regularization."""
+                d = Sigma.shape[0]
+                return np.linalg.inv(Sigma + ridg * np.eye(d))
+                
+
             for k1 in range(L):
                 for l1 in range(k1, L):
                     for k2 in range(L):
@@ -335,10 +358,18 @@ class linear:
 
                             X_l1 = self.X_list[l1].copy()
                             X_k1 = self.X_list[k1].copy()
+                            X_l2 = self.X_list[l2].copy()
+                            X_k2 = self.X_list[k2].copy()
 
                             if self.intercept:
                                 X_l1 = np.hstack((np.ones((X_l1.shape[0], 1)), X_l1))
                                 X_k1 = np.hstack((np.ones((X_k1.shape[0], 1)), X_k1))
+                                X_l2 = np.hstack((np.ones((X_l2.shape[0], 1)), X_l2))
+                                X_k2 = np.hstack((np.ones((X_k2.shape[0], 1)), X_k2))
+                        
+                                X0_with_int = np.hstack((np.ones((self.X0.shape[0], 1)), self.X0))
+                            else:
+                                X0_with_int = self.X0.copy()
 
                             Sigma_l1 = X_l1.T @ X_l1 / X_l1.shape[0]
                             Sigma_k1 = X_k1.T @ X_k1 / X_k1.shape[0]
@@ -347,19 +378,19 @@ class linear:
                             dev_k1 = sum((self.y_list[k1] - X_k1 @ self.beta_list[k1]) ** 2)/ (X_k1.shape[0]-self.d)
 
                             # projection vectors
-                            Proj1 = np.linalg.inv(np.cov(X_l1, rowvar=False)) @ np.cov(self.X0, rowvar=False) @ self.beta_list[k1]
-                            Proj2_l1 = np.linalg.inv(np.cov(self.X_list[l2], rowvar=False)) @ np.cov(self.X0, rowvar=False) @ self.beta_list[k2] if l2 == l1 else np.zeros(self.d)
-                            Proj2_k1 = np.linalg.inv(np.cov(self.X_list[k2], rowvar=False)) @ np.cov(self.X0, rowvar=False) @ self.beta_list[l2] if k2 == l1 else np.zeros(self.d)
+                            Proj1 = inv_V(np.cov(X_l1, rowvar=False)) @ np.cov(X0_with_int, rowvar=False) @ self.beta_list[k1]
+                            Proj2_l1 = inv_V(np.cov(X_l2, rowvar=False)) @ np.cov(X0_with_int, rowvar=False) @ self.beta_list[k2] if l2 == l1 else np.zeros(self.d)
+                            Proj2_k1 = inv_V(np.cov(X_k2, rowvar=False)) @ np.cov(X0_with_int, rowvar=False) @ self.beta_list[l2] if k2 == l1 else np.zeros(self.d)
                             val1 = dev_l1 / X_l1.shape[0] * (Proj1 @ Sigma_l1 @ (Proj2_l1 + Proj2_k1))
 
-                            Proj3 = np.linalg.inv(np.cov(X_k1, rowvar=False)) @ np.cov(self.X0, rowvar=False) @ self.beta_list[l1]
-                            Proj4_l1 = np.linalg.inv(np.cov(self.X_list[l2], rowvar=False)) @ np.cov(self.X0, rowvar=False) @ self.beta_list[k2] if l2 == k1 else np.zeros(self.d)
-                            Proj4_k1 = np.linalg.inv(np.cov(self.X_list[k2], rowvar=False)) @ np.cov(self.X0, rowvar=False) @ self.beta_list[l2] if k2 == k1 else np.zeros(self.d)
+                            Proj3 = inv_V(np.cov(X_k1, rowvar=False)) @ np.cov(X0_with_int, rowvar=False) @ self.beta_list[l1]
+                            Proj4_l1 = inv_V(np.cov(X_l2, rowvar=False)) @ np.cov(X0_with_int, rowvar=False) @ self.beta_list[k2] if l2 == k1 else np.zeros(self.d)
+                            Proj4_k1 = inv_V(np.cov(X_k2, rowvar=False)) @ np.cov(X0_with_int, rowvar=False) @ self.beta_list[l2] if k2 == k1 else np.zeros(self.d)
                             val2 = dev_k1 / X_k1.shape[0] * (Proj3 @ Sigma_k1 @ (Proj4_l1 + Proj4_k1))
 
-                            P1 = self.X0 @ self.beta_list[l1] * (self.X0 @ self.beta_list[k1])
-                            P2 = self.X0 @ self.beta_list[l2] * (self.X0 @ self.beta_list[k2])
-                            val3 = np.mean((P1 - np.mean(P1)) * (P2 - np.mean(P2))) / self.X0.shape[0]
+                            P1 = X0_with_int @ self.beta_list[l1] * (X0_with_int @ self.beta_list[k1])
+                            P2 = X0_with_int @ self.beta_list[l2] * (X0_with_int @ self.beta_list[k2])
+                            val3 = np.mean((P1 - np.mean(P1)) * (P2 - np.mean(P2))) / X0_with_int.shape[0]
                         
                         
                             val = val1 + val2 + val3
@@ -493,7 +524,7 @@ class linear:
             loading_mat = np.zeros((n_index, self.d))
             for i in range(n_index):
                 loading_mat[i, index[i]] = 1
-            self.loading_mat = np.asarray(loading_mat, dtype=float) # Shape: (n_index, d) or (n_index, d+1) if loading_intercept is True
+            self.loading_mat = np.asarray(loading_mat, dtype=float) 
 
             if not isinstance(self.verbose, bool):
                 self.verbose = True
@@ -524,7 +555,11 @@ class linear:
                 beta_init = np.concatenate(([Umodel.intercept_], Umodel.coef_)) if self.intercept else Umodel.coef_
                 beta_init = np.asarray(beta_init).ravel()
                 sparsity = np.sum(np.abs(beta_init) > 1e-4)
-                pred = (X @ beta_init).ravel()
+                if self.intercept:
+                    X1 = np.column_stack((np.ones(X.shape[0]), X))
+                    pred = (X1 @ beta_init).ravel()
+                else:
+                    pred = (X @ beta_init).ravel()
                 dev = self.dev_fun(pred, y, sparsity=sparsity)
 
 
@@ -545,17 +580,23 @@ class linear:
             X0 = np.asarray(X0, dtype=float)
             X0 = X0 - np.mean(X0, axis=0)
             self.X0 = X0
+            
             # pred0.mat: n0 x L
             pred0_mat = np.empty((X0.shape[0], self.L))
-            for l in range(self.L):
-                pred0_mat[:, l] = (X0 @ self.init_est[l]['beta_init']).ravel()
-            self.pred0_mat = pred0_mat
+            
+            
 
             if self.intercept:
                 X0_with_int = np.column_stack((np.ones(X0.shape[0]), X0))
                 Sigma0 = (X0_with_int.T @ X0_with_int) / X0_with_int.shape[0]
+                for l in range(self.L):
+                    pred0_mat[:, l] = (X0_with_int @ self.init_est[l]['beta_init']).ravel()
             else:
                 Sigma0 = (X0.T @ X0) / X0.shape[0]
+                for l in range(self.L):
+                    pred0_mat[:, l] = (X0 @ self.init_est[l]['beta_init']).ravel()
+            self.pred0_mat = pred0_mat  # Shape: (n0, L)
+            
 
             # Gamma.plugin
             Gamma_plugin = np.zeros((self.L, self.L))
@@ -618,17 +659,32 @@ class linear:
     # ======================================================================= #
     # =================== Prediction  ======================================= #
     # ======================================================================= #
-        def predict(self):
-            """
-            Predict using the fitted DRO regression model.
+        def predict(self, X=None):
+                """
+                Predict using the fitted DRO regression model.
 
-            Returns:
-                pred (array-like): Predicted values for the target domain, shape (n0,).
-            """
+                Returns:
+                    pred (array-like): Predicted values for the target domain, shape (n0,).
+                """
+                if X is None:
+                    X = self.X0
+                    if self.intercept:
+                        X_with_int = np.column_stack((np.ones(X.shape[0]), X))
+                        pred = X_with_int @ self.beta_plug
+                    else:
+                        pred = X @ self.beta_plug
 
-            pred = self.X0 @ self.beta_plug
+                else:
+                    if X.shape[1] != len(self.beta_plug):
+                        raise ValueError("Dimension mismatch between input features and fitted coefficients.")
+                
+                    X = np.asarray(X, dtype=float)
+                    pred = X @ self.beta_plug
 
-            return pred
+            
+
+                return pred
+
 
     # ======================================================================= #
     # =================== Compute CIs ======================================= #
@@ -1053,15 +1109,25 @@ class ml:
         weight_sol = self.opt_weight(Gamma, loss_type=loss_type, priors=priors)
         self.weight_ = weight_sol['weight']
         
-    def predict(self):
+    def predict(self, X=None):
         """Estimate the optimal aggregation weights using the estimated Gamma matrix,
         and yield the robust prediction on the target domain.
         
         Returns:
             pred : the robust prediction on the target domain
         """
+        if X is None:
+            pred = self.pred_full_mat @ self.weight_
+        else:
+            if X.shape[1] != self.d:
+                raise ValueError("Dimension mismatch between input features and fitted coefficients.")
+            X = np.asarray(X, dtype=float)
+            pred_full_mat = np.zeros((X.shape[0], self.L))
+            for l in range(self.L):
+                pred_full_mat[:, l] = self.source_full_models[l].model_f.predict(X)
+            pred = pred_full_mat @ self.weight_
 
-        pred = self.pred_full_mat @ self.weight_
+
         self.pred = pred
 
         return pred
@@ -1116,7 +1182,6 @@ class ml:
             else:
                 prior_weight, rho = priors
                 constraints = [cp.sum(v) == 1, cp.norm(v - prior_weight) <= rho]
-            constraints = [cp.sum(v) == 1]
             prob = cp.Problem(objective, constraints)
             
 

@@ -10,6 +10,7 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 
 
+
 def compute_softmax(x):
     """Compute softmax probabilities for multi-class classification.
     
@@ -339,7 +340,7 @@ class UtilModels:
                 raise ValueError(f"Unknown w_learner: {self.w_learner}")
 
             # ----------------- Train (with or without split) ----------------- #
-            if getattr(self, "split", False):
+            if self.split:
                 if not hasattr(self, "indA") or not hasattr(self, "indB"):
                     raise ValueError("Cross-fitting requires self.indA and self.indB.")
                 indA = np.asarray(self.indA); indB = np.asarray(self.indB)
@@ -410,7 +411,7 @@ class UtilModels:
             clip_lo = getattr(self, "w_clip_lo", 1e-3)
             clip_hi = getattr(self, "w_clip_hi", 1e3)
 
-            if getattr(self, "split", False):
+            if self.split:
                 if not hasattr(self, "indA") or not hasattr(self, "indB"):
                     raise ValueError("Cross-fitting requires self.indA and self.indB.")
                 indA = np.asarray(self.indA); indB = np.asarray(self.indB)
@@ -540,7 +541,7 @@ class UtilModels:
             raise ValueError(f"Unknown w_learner: {self.w_learner}")
 
         # ----------------- Train (with or without split) ----------------- #
-        if getattr(self, "split", False):
+        if self.split:
             if not hasattr(self, "indA") or not hasattr(self, "indB"):
                 raise ValueError("Cross-fitting requires self.indA and self.indB.")
             indA = np.asarray(self.indA); indB = np.asarray(self.indB)
@@ -611,7 +612,7 @@ class UtilModels:
         clip_lo = getattr(self, "w_clip_lo", 1e-3)
         clip_hi = getattr(self, "w_clip_hi", 1e3)
 
-        if getattr(self, "split", False):
+        if self.split:
             if not hasattr(self, "indA") or not hasattr(self, "indB"):
                 raise ValueError("Cross-fitting requires self.indA and self.indB.")
             indA = np.asarray(self.indA); indB = np.asarray(self.indB)
@@ -660,7 +661,7 @@ class BiasCorrection:
         y = np.asarray(y, dtype=float).ravel()
         loading_mat = np.asarray(loading_mat, dtype=float) # n_loading * p
 
-        loading_include_intercept = (X.shape[1] == (loading_mat.shape[0] - 1))
+        loading_include_intercept = (X.shape[1] == (loading_mat.shape[1] - 1))
 
         # --- Preparation ---
         # Center X
@@ -711,6 +712,7 @@ class BiasCorrection:
 
             # Adjust loading
             loading = loading_mat[i_loading, :].copy()
+
             if not loading_include_intercept:
                 if self.intercept:
                     if self.loading_intercept:
