@@ -3,7 +3,7 @@ from scipy.optimize import minimize
 from scipy.stats import norm, chi2
 from scipy.linalg import svd
 import cvxpy as cp
-from utils import UtilModels, compute_softmax, fit_fw, BiasCorrection
+from .utils import UtilModels, compute_softmax, fit_fw, BiasCorrection
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -144,6 +144,12 @@ class Classification:
     def predict_proba(self, X=None):
         """
         Predict the probabilities of each class for the given input X.
+
+        Args:
+            X (array-like, optional): Input features for prediction. If None, uses the training data. Defaults to None.
+
+        Returns:
+            proba (array-like): Predicted probabilities for each class, shape (n_samples, num_class).
         """ 
         if X is None:
             X = self.X0 
@@ -165,6 +171,12 @@ class Classification:
     def predict(self, X=None):
         """
         Predict the class labels for the given input X.
+
+        Args:
+            X (array-like, optional): Input features for prediction. If None, uses the training data. Defaults to None.
+
+        Returns:
+            pred (array-like): Predicted class labels, shape (n_samples,).
         """
 
         proba = self.predict_proba(X)

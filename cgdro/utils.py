@@ -5,7 +5,7 @@ from collections import Counter
 from sklearn.linear_model import LinearRegression, LogisticRegression, LassoCV, Lasso
 from sklearn.model_selection import GridSearchCV, KFold, StratifiedKFold
 import xgboost as xgb
-from Kden import KernelRatioEstimatorKLIEP
+from .Kden import KernelRatioEstimatorKLIEP
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 

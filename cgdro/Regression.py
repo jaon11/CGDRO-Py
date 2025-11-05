@@ -1,5 +1,6 @@
 import numpy as np
-from utils import *
+from .utils import BiasCorrection, UtilModels
+from sklearn.linear_model import LinearRegression
 import cvxpy as cp
 from cvxpy.error import DCPError, SolverError
 from scipy.stats import norm, chi2
@@ -122,6 +123,9 @@ class linear:
         def predict(self, X=None):
             """
             Predict using the fitted DRO regression model.
+
+            Args:
+                X (array-like, optional): Input features for prediction. If None, uses the training data. Defaults to None.
 
             Returns:
                 pred (array-like): Predicted values for the target domain, shape (n0,).
@@ -663,6 +667,9 @@ class linear:
                 """
                 Predict using the fitted DRO regression model.
 
+                Args:
+                    X (array-like, optional): Input features for prediction. If None, uses the training data. Defaults to None.
+
                 Returns:
                     pred (array-like): Predicted values for the target domain, shape (n0,).
                 """
@@ -1112,7 +1119,10 @@ class ml:
     def predict(self, X=None):
         """Estimate the optimal aggregation weights using the estimated Gamma matrix,
         and yield the robust prediction on the target domain.
-        
+
+        Args:
+            X (array-like, optional): Input features for prediction. If None, uses the training data. Defaults to None.
+
         Returns:
             pred : the robust prediction on the target domain
         """
