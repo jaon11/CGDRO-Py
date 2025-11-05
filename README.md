@@ -97,7 +97,7 @@ print(pred[:10])
 
 
 
-## References
+# References
 
 <span id="ref-guo2024statistical"></span>
 **Guo, Z.** (2024). *Statistical inference for maximin effects: Identifying stable associations across multiple studies.*  
