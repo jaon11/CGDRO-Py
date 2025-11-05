@@ -94,3 +94,20 @@ print(pred[:10])
 ```
 
     ## [-0.13644197 -0.08692431  0.04184841 -0.18107761 -0.30044671  0.0026928 -0.30307077 -0.18239394 -0.06712825  0.20524958]
+
+
+
+## References
+
+<span id="ref-guo2024statistical"></span>
+**Guo, Z.** (2024). *Statistical inference for maximin effects: Identifying stable associations across multiple studies.*  
+*Journal of the American Statistical Association*, 119(547), 1968–1984.  
+[Paper link](https://doi.org/10.1080/01621459.2023.2258469)
+
+<span id="ref-wang2023distributionally"></span>
+**Wang, Z.**, **Bühlmann, P.**, & **Guo, Z.** (2023). *Distributionally robust machine learning with multi-source data.*  
+*arXiv preprint* [arXiv:2309.02211](https://arxiv.org/abs/2309.02211)
+
+<span id="ref-guo2025statistical"></span>
+**Guo, Z.**, **Wang, Z.**, **Hu, Y.**, & **Bach, F.** (2025). *Statistical Inference for Conditional Group Distributionally Robust Optimization with Cross-Entropy Loss.*  
+*arXiv preprint* [arXiv:2507.09905](https://arxiv.org/abs/2507.09905)
