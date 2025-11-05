@@ -1,6 +1,3 @@
-README
-================
-
 # CGDRO
 
 CGDRO is a python library providing comprehensive multi-source prediction and model statistical inference without knowing target labels, offering multi-source solutions to low-dimensional and high-dimensional, linear and complex data, regression and classification problems.
