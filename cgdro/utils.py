@@ -79,7 +79,7 @@ def fit_fw(models, X_list, y_list, X0):
     
 
 class UtilModels:
-    def __init__(self, mode='cls', f_learner='linear', w_learner='linear', lambda_val=None, split=False, intercept=False, seed=123, verbose=False): 
+    def __init__(self, mode='cls', f_learner='linear', w_learner='logistic', lambda_val=None, split=False, intercept=False, seed=123, verbose=False): 
         """Initialize the model utility class with parameters.
         Args:
             seed : int, optional
@@ -87,8 +87,8 @@ class UtilModels:
             mode: str, whether to use 'reg' or 'cls'
             f_learner : str, default='linear'
                 ('linear' or 'xgb')
-            w_learner : str, default='linear'
-                ('linear' or 'xgb' or 'ulsif' or 'rulsif' or 'kliep')
+            w_learner : str, default='logistic'
+                ('logistic' or 'xgb' or 'ulsif' or 'rulsif' or 'kliep')
             split : bool, default=False
                 Whether to split data for creating independence.
             verbose : bool, default=False
@@ -303,7 +303,7 @@ class UtilModels:
             X = np.asarray(X); X0 = np.asarray(X0)
 
             # ----------------- Model Definition ----------------- #
-            if self.w_learner == 'linear':
+            if self.w_learner == 'logistic':
                 estimator = LogisticRegression(solver='lbfgs', max_iter=1000)
                 param_grid = None
 
@@ -378,7 +378,7 @@ class UtilModels:
                     self.density_params = est_params
                     #self.density_params = None
             else:
-                if self.w_learner in ('linear', 'xgb'):
+                if self.w_learner in ('logistic', 'xgb'):
                     X_concat = np.vstack((X, X0))
                     y_concat = np.concatenate((np.zeros(X.shape[0]), np.ones(X0.shape[0])))
                     if param_grid is None:
@@ -504,7 +504,7 @@ class UtilModels:
         X = np.asarray(X); X0 = np.asarray(X0)
 
         # ----------------- Model Definition ----------------- #
-        if self.w_learner == 'linear':
+        if self.w_learner == 'logistic':
             estimator = LogisticRegression(solver='lbfgs', max_iter=1000)
             param_grid = None
 
@@ -579,7 +579,7 @@ class UtilModels:
                 self.density_params = est_params
                 #self.density_params = None
         else:
-            if self.w_learner in ('linear', 'xgb'):
+            if self.w_learner in ('logistic', 'xgb'):
                 X_concat = np.vstack((X, X0))
                 y_concat = np.concatenate((np.zeros(X.shape[0]), np.ones(X0.shape[0])))
                 if param_grid is None:

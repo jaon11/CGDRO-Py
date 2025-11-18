@@ -14,12 +14,12 @@ class Classification:
 
     Args:
         f_learner (str, optional): method used to fit outcome models on each source. Defaults to 'linear'.
-        w_learner (str, optional): method used to fit density models on each source. Defaults to 'linear'.
+        w_learner (str, optional): method used to fit density models on each source. Defaults to 'logistic'.
         split (bool, optional): whether to split the source data into two halves for fitting outcome and density models. Defaults to True.
         seed (int, optional): random seed for data-splitting. Defaults to 123.
     """
 
-    def __init__(self, f_learner='linear', w_learner='linear',split=True, seed=123):
+    def __init__(self, f_learner='linear', w_learner='logistic',split=True, seed=123):
         self.f_learner = f_learner
         self.w_learner = w_learner
         self.split = split

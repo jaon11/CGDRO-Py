@@ -1002,11 +1002,11 @@ class ml:
     Distributionally Robust Learning (DRoL) for multi-source data.
         Args:
             f_learner (str, optional): method used to fit outcome models on each source. Defaults to 'xgb'.
-            w_learner (str, optional): method used to fit density models on each source. Defaults to 'xgb'.
+            w_learner (str, optional): method used to fit density models on each source. Defaults to 'logistic'.
             seed (int, optional): random seed. Defaults to 123.
             verbose (bool, optional): whether to print out the fitting information. Defaults to False.
     """
-    def __init__(self, f_learner = 'xgb', w_learner = 'linear', seed = 123, verbose = False):
+    def __init__(self, f_learner = 'xgb', w_learner = 'logistic', seed = 123, verbose = False):
         self.seed = seed
         self.f_learner = f_learner
         self.w_learner = w_learner
