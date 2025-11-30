@@ -82,7 +82,15 @@ reg.summary()
     ##index     |              1              2              3              4              5
     ##CI        | (-0.1283,-0.0027) (-0.1080,0.0214) (-0.0601,0.0665) (-0.0666,0.0629) (0.0351,0.1643)
 
-We can get statistical inference results from CGDRO, including **CGDRO Aggregated Weights** (learned weights from each group of source domain), **Coefficient Estimators** (the worst-case estimators of coefficient on target domain), and **Confidence Intervals** (valid confidence intervals of target domain coefficient estimators). In the summarized results above, `group` refers to each group of source domains, `index` refers to the index of coeffients, starting from the intercept if `intercept=True`, else starting from the first dimension of coefficient.
+We can get statistical inference results from CGDRO, including：
+
+- **CGDRO Aggregated Weights** (learned weights from each group of source domain)；
+
+- **Coefficient Estimators** (the worst-case estimators of coefficient on target domain)；
+
+- **Confidence Intervals** (valid confidence intervals of target domain coefficient estimators). 
+
+In the summarized results above, `group` refers to each group of source domains, `index` refers to the index of coeffients, starting from the intercept if `intercept=True`, else starting from the first dimension of coefficient.
 
 Make prediction on target data (you do not have to state the coveriate you use for prediction since target data is the default choice) and show the first 10 predicted values.
 
@@ -107,3 +115,4 @@ print(pred[:10])
 <span id="ref-guo2025statistical"></span>
 **Guo, Z.**, **Wang, Z.**, **Hu, Y.**, & **Bach, F.** (2025). *Statistical Inference for Conditional Group Distributionally Robust Optimization with Cross-Entropy Loss.*  
 *arXiv preprint* [arXiv:2507.09905](https://arxiv.org/abs/2507.09905)
+
